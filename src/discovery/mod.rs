@@ -308,22 +308,22 @@ where
     pub fn discover_async<'c, C>(
         issuer_url: IssuerUrl,
         http_client: &'c C,
-    ) -> impl Future<Output = Result<Self, DiscoveryError<<C as AsyncHttpClient<'c>>::Error>>> + 'c
+    ) -> impl Future<Output = Result<Self, DiscoveryError<<C as AsyncHttpClient<'c>>::Error>>> + 'c + Send
     where
-        Self: 'c,
-        C: AsyncHttpClient<'c>,
+        Self: 'c + Send,
+        C: AsyncHttpClient<'c> + Send + Sync,
     {
         Box::pin(async move {
             let discovery_url = issuer_url
                 .join(CONFIG_URL_SUFFIX)
                 .map_err(DiscoveryError::UrlParse)?;
 
+            let request = Self::discovery_request(discovery_url.clone()).map_err(|err| {
+                DiscoveryError::Other(format!("failed to prepare request: {err}"))
+            })?;
+
             let provider_metadata = http_client
-                .call(
-                    Self::discovery_request(discovery_url.clone()).map_err(|err| {
-                        DiscoveryError::Other(format!("failed to prepare request: {err}"))
-                    })?,
-                )
+                .call(request)
                 .await
                 .map_err(DiscoveryError::Request)
                 .and_then(|http_response| {

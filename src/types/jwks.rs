@@ -113,16 +113,20 @@ where
     pub fn fetch_async<'c, C>(
         url: &JsonWebKeySetUrl,
         http_client: &'c C,
-    ) -> impl Future<Output = Result<Self, DiscoveryError<<C as AsyncHttpClient<'c>>::Error>>> + 'c
+    ) -> impl Future<Output = Result<Self, DiscoveryError<<C as AsyncHttpClient<'c>>::Error>>> + 'c + Send
     where
         Self: 'c,
-        C: AsyncHttpClient<'c>,
+        C: AsyncHttpClient<'c> + Sync + Send,
     {
-        let fetch_request = Self::fetch_request(url)
-            .map_err(|err| DiscoveryError::Other(format!("failed to prepare request: {err}")));
+        let url = url.to_owned();
+
         Box::pin(async move {
+            let fetch_request = Self::fetch_request(&url).map_err(|err| {
+                DiscoveryError::Other(format!("failed to prepare request: {err}"))
+            })?;
+
             http_client
-                .call(fetch_request?)
+                .call(fetch_request)
                 .await
                 .map_err(DiscoveryError::Request)
                 .and_then(Self::fetch_response)
